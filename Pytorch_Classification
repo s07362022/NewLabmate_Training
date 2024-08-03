@@ -1,0 +1,112 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
+import torchvision.models as models
+from torch.utils.data import DataLoader, random_split
+from sklearn.metrics import accuracy_score, f1_score
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 設定數據轉換與增強
+transform_train = transforms.Compose([
+    transforms.RandomResizedCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+transform_test = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+# 載入你的自定義數據集
+dataset = datasets.ImageFolder(root='path/to/your/dataset', transform=transform_train)
+
+# 切分訓練集與測試集
+train_size = int(0.8 * len(dataset))
+test_size = len(dataset) - train_size
+train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+
+# 重新設置測試集的轉換
+test_dataset.dataset.transform = transform_test
+
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+# 使用ResNet50模型
+model = models.resnet50(pretrained=True)
+num_ftrs = model.fc.in_features
+model.fc = nn.Linear(num_ftrs, len(dataset.classes))  # 根據類別數目調整輸出層
+
+# 使用GPU（如果可用）
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
+
+# 定義損失函數與優化器
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# 訓練模型
+for epoch in range(10):
+    model.train()
+    running_loss = 0.0
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+
+    print(f'Epoch {epoch+1}, Loss: {running_loss/len(train_loader)}')
+
+# 測試模型並計算評估指標
+model.eval()
+all_labels = []
+all_preds = []
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = model(inputs)
+        _, preds = torch.max(outputs, 1)
+        all_labels.extend(labels.cpu().numpy())
+        all_preds.extend(preds.cpu().numpy())
+
+accuracy = accuracy_score(all_labels, all_preds)
+f1 = f1_score(all_labels, all_preds, average='weighted')
+print(f'Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}')
+
+# 圖像化部分分類結果
+def imshow(inp, title=None):
+    inp = inp.numpy().transpose((1, 2, 0))
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    inp = std * inp + mean
+    inp = np.clip(inp, 0, 1)
+    plt.imshow(inp)
+    if title is not None:
+        plt.title(title)
+    plt.pause(0.001)
+
+# 顯示一些分類結果
+class_names = dataset.classes
+inputs, classes = next(iter(test_loader))
+inputs, classes = inputs.to(device), classes.to(device)
+outputs = model(inputs)
+_, preds = torch.max(outputs, 1)
+
+plt.figure(figsize=(15, 15))
+for idx in range(9):
+    ax = plt.subplot(3, 3, idx + 1)
+    imshow(inputs.cpu().data[idx])
+    ax.set_title(f'predicted: {class_names[preds[idx]]}, true: {class_names[classes[idx]]}')
+    ax.axis('off')
+
+plt.show()
