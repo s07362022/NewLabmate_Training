@@ -1,0 +1,24 @@
+資料集 :
+```
+dataset/
+    train/
+        class1/
+            image1.jpg
+            image2.jpg
+            ...
+        class2/
+            image1.jpg
+            image2.jpg
+            ...
+        ...
+    test/  
+        class1/
+            image1.jpg
+            image2.jpg
+            ...
+        class2/
+            image1.jpg
+            image2.jpg
+            ...
+        ...
+```
